@@ -2,40 +2,50 @@ package com.example.Stock.controller;
 
 import com.example.Stock.service.UserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-@Controller
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
     private final UserService userService;
 
-    // 회원가입 페이지
-    @GetMapping("/register")
-    public String registerPage() {
-        return "register";
-    }
-
-    // 회원가입 처리
+    // 회원가입
     @PostMapping("/register")
-    public String register(@RequestParam String email,
-                           @RequestParam String password,
-                           @RequestParam String name,
-                           Model model) {
+    public ResponseEntity<?> register(@RequestBody Map<String, String> body) {
         try {
-            userService.register(email, password, name);
-            return "redirect:/login";
+            userService.register(
+                    body.get("email"),
+                    body.get("password"),
+                    body.get("name")
+            );
+            return ResponseEntity.ok("회원가입 성공");
         } catch (RuntimeException e) {
-            model.addAttribute("error", e.getMessage());
-            return "register";
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    // 로그인 페이지
-    @GetMapping("/login")
-    public String loginPage() {
-        return "login";
+    // 현재 로그인 유저 정보
+    @GetMapping("/me")
+    public ResponseEntity<?> me(@org.springframework.security.core.annotation.AuthenticationPrincipal Object principal) {
+        if (principal == null) return ResponseEntity.status(401).body("로그인 필요");
+
+        if (principal instanceof org.springframework.security.oauth2.core.user.OAuth2User o) {
+            return ResponseEntity.ok(Map.of(
+                    "name", o.getAttribute("name"),
+                    "email", o.getAttribute("email"),
+                    "picture", o.getAttribute("picture") != null ? o.getAttribute("picture") : ""
+            ));
+        } else if (principal instanceof org.springframework.security.core.userdetails.User u) {
+            return ResponseEntity.ok(Map.of(
+                    "email", u.getUsername(),
+                    "name", u.getUsername()
+            ));
+        }
+        return ResponseEntity.status(401).body("로그인 필요");
     }
 }

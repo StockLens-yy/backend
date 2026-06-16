@@ -11,15 +11,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @Tag(name = "Stock", description = "주식 관련 API")
-@Controller
-@RequestMapping("/stocks")
+@RestController
+@RequestMapping("/api/stocks")
 @RequiredArgsConstructor
 public class StockController {
 
@@ -28,34 +26,23 @@ public class StockController {
     private final UserRepository userRepository;
     private final WatchListService watchListService;
 
-    // 메인 화면
-    @Operation(summary = "메인 화면", description = "주식 Top50 메인 페이지")
+    // 전체 종목 조회
+    @Operation(summary = "전체 종목 조회", description = "DB에 저장된 전체 종목 조회")
     @GetMapping
-    public String index(Model model, @AuthenticationPrincipal Object principal) {
-        model.addAttribute("stocks", stockService.getAllStocks());
-
-        if (principal instanceof org.springframework.security.core.userdetails.User userDetails) {
-            userRepository.findByEmail(userDetails.getUsername())
-                    .ifPresent(user -> model.addAttribute("username", user.getName()));
-        } else if (principal instanceof org.springframework.security.oauth2.core.user.OAuth2User oauth2User) {
-            model.addAttribute("username", oauth2User.getAttribute("name"));
-        }
-
-        return "index";
+    public ResponseEntity<List<Stock>> getAllStocks() {
+        return ResponseEntity.ok(stockService.getAllStocks());
     }
 
-    // Top50 새로고침
+    // Top50 실시간 업데이트
     @Operation(summary = "Top50 실시간 업데이트", description = "네이버 크롤링 + KIS API로 실시간 주가 조회")
     @PostMapping("/refresh")
-    @ResponseBody
     public ResponseEntity<List<Stock>> refresh() {
         return ResponseEntity.ok(stockService.getAllStockPrices());
     }
 
     // 단일 종목 조회
     @Operation(summary = "단일 종목 조회", description = "종목코드로 주가 조회")
-    @GetMapping("/api/{symbol}")
-    @ResponseBody
+    @GetMapping("/{symbol}")
     public ResponseEntity<Stock> getStock(
             @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol) {
         return ResponseEntity.ok(stockService.getAllStocks()
@@ -68,15 +55,13 @@ public class StockController {
     // AI 추천
     @Operation(summary = "AI 종목 추천", description = "Ollama AI가 Top50 데이터 분석 후 추천")
     @GetMapping("/ai-recommend")
-    @ResponseBody
     public ResponseEntity<String> aiRecommend() {
         return ResponseEntity.ok(aiRecommendService.recommend());
     }
 
     // 관심종목 추가
-    @Operation(summary = "관심종목 추가", description = "로그인 유저의 관심종목 추가")
+    @Operation(summary = "관심종목 추가")
     @PostMapping("/watchlist/add")
-    @ResponseBody
     public ResponseEntity<String> addWatchList(
             @RequestParam String symbol,
             @RequestParam String name,
@@ -90,7 +75,6 @@ public class StockController {
     // 관심종목 삭제
     @Operation(summary = "관심종목 삭제")
     @PostMapping("/watchlist/remove")
-    @ResponseBody
     public ResponseEntity<String> removeWatchList(
             @RequestParam String symbol,
             @AuthenticationPrincipal Object principal) {
@@ -103,7 +87,6 @@ public class StockController {
     // 관심종목 조회
     @Operation(summary = "관심종목 조회")
     @GetMapping("/watchlist")
-    @ResponseBody
     public ResponseEntity<?> getWatchList(@AuthenticationPrincipal Object principal) {
         String email = getEmail(principal);
         if (email == null) return ResponseEntity.status(401).body("로그인이 필요합니다.");
@@ -111,11 +94,10 @@ public class StockController {
     }
 
     // 일봉 차트
-    @Operation(summary = "일봉 차트 데이터", description = "최근 30일 일봉 데이터")
+    @Operation(summary = "일봉 차트 데이터")
     @GetMapping("/chart/{symbol}/daily")
-    @ResponseBody
     public ResponseEntity<?> getDailyChart(
-            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol) {
+            @Parameter(description = "종목코드") @PathVariable String symbol) {
         try {
             return ResponseEntity.ok(stockService.getDailyChart(symbol));
         } catch (Exception e) {
@@ -124,11 +106,10 @@ public class StockController {
     }
 
     // 주봉 차트
-    @Operation(summary = "주봉 차트 데이터", description = "최근 3개월 주봉 데이터")
+    @Operation(summary = "주봉 차트 데이터")
     @GetMapping("/chart/{symbol}/weekly")
-    @ResponseBody
     public ResponseEntity<?> getWeeklyChart(
-            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol) {
+            @Parameter(description = "종목코드") @PathVariable String symbol) {
         try {
             return ResponseEntity.ok(stockService.getWeeklyChart(symbol));
         } catch (Exception e) {

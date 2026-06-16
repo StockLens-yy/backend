@@ -26,32 +26,40 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .userDetailsService(customUserDetailsService) // ← 여기!
+                .userDetailsService(customUserDetailsService)
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/register", "/login", "/oauth2/**", "/login/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll() // ← 추가
-                        .requestMatchers("/stocks/ai-recommend").authenticated()
+                        .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll()
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/stocks/ai-recommend", "/api/stocks/watchlist/**").authenticated()
                         .anyRequest().permitAll()
                 )
                 .formLogin(form -> form
-                        .loginPage("/login")
-                        .loginProcessingUrl("/login-process")
-                        .defaultSuccessUrl("/stocks", true)
-                        .failureUrl("/login?error=true")
-                        .usernameParameter("email")
-                        .passwordParameter("password")
+                        .loginProcessingUrl("/api/auth/login")
+                        .defaultSuccessUrl("/", true)
+                        .failureHandler((req, res, ex) -> {
+                            res.setStatus(401);
+                            res.getWriter().write("로그인 실패");
+                        })
+                        .successHandler((req, res, auth) -> {
+                            res.setStatus(200);
+                            res.setContentType("application/json;charset=UTF-8");
+                            res.getWriter().write("{\"message\":\"로그인 성공\"}");
+                        })
                         .permitAll()
                 )
                 .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/login")
-                        .defaultSuccessUrl("/stocks", true)
+                        .defaultSuccessUrl("http://localhost:5173", true)
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)
                         )
                 )
                 .logout(logout -> logout
-                        .logoutSuccessUrl("/stocks")
+                        .logoutUrl("/api/auth/logout")
+                        .logoutSuccessHandler((req, res, auth) -> {
+                            res.setStatus(200);
+                            res.getWriter().write("로그아웃 성공");
+                        })
                 );
 
         return http.build();
