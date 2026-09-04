@@ -1,19 +1,24 @@
 package com.example.Stock.controller;
 
 import com.example.Stock.domain.Stock;
+import com.example.Stock.domain.StockPrice;
 import com.example.Stock.repository.UserRepository;
 import com.example.Stock.service.AiRecommendService;
+import com.example.Stock.service.StockPriceService;
 import com.example.Stock.service.StockService;
 import com.example.Stock.service.WatchListService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @Tag(name = "Stock", description = "주식 관련 API")
 @RestController
@@ -25,6 +30,7 @@ public class StockController {
     private final AiRecommendService aiRecommendService;
     private final UserRepository userRepository;
     private final WatchListService watchListService;
+    private final StockPriceService stockPriceService;
 
     // 전체 종목 조회
     @Operation(summary = "전체 종목 조회", description = "DB에 저장된 전체 종목 조회")
@@ -115,6 +121,46 @@ public class StockController {
         } catch (Exception e) {
             return ResponseEntity.status(500).body("차트 데이터 조회 실패: " + e.getMessage());
         }
+    }
+
+    // 일봉 시계열 조회 (DB 누적분)
+    @Operation(summary = "일봉 시계열 조회",
+            description = "수집·누적된 일봉 데이터를 조회한다. from/to 미지정 시 전체 이력 반환")
+    @GetMapping("/{symbol}/history")
+    public ResponseEntity<List<StockPrice>> getHistory(
+            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol,
+            @Parameter(description = "시작일 (yyyy-MM-dd)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "종료일 (yyyy-MM-dd)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(stockPriceService.getHistory(symbol, from, to));
+    }
+
+    // 시계열 수집 (백그라운드 실행)
+    @Operation(summary = "일봉 시계열 수집",
+            description = "전체 종목의 최근 N일 일봉을 백그라운드로 수집한다. 즉시 202 응답")
+    @PostMapping("/prices/collect")
+    public ResponseEntity<String> collectPrices(
+            @Parameter(description = "수집할 기간(일)") @RequestParam(defaultValue = "100") int days) {
+        stockPriceService.collectAllAsync(days);
+        return ResponseEntity.accepted().body("수집을 시작했습니다. 최근 " + days + "일치");
+    }
+
+    // 단일 종목 시계열 수집 (동기)
+    @Operation(summary = "단일 종목 일봉 수집", description = "지정 종목의 최근 N일 일봉을 즉시 수집한다")
+    @PostMapping("/{symbol}/prices/collect")
+    public ResponseEntity<String> collectSymbolPrices(
+            @Parameter(description = "종목코드") @PathVariable String symbol,
+            @RequestParam(defaultValue = "100") int days) {
+        int saved = stockPriceService.collectSymbol(symbol, LocalDate.now().minusDays(days), LocalDate.now());
+        return ResponseEntity.ok(symbol + " " + saved + "행 저장");
+    }
+
+    // 수집 현황
+    @Operation(summary = "시계열 수집 현황", description = "누적된 행 수와 종목 수")
+    @GetMapping("/prices/status")
+    public ResponseEntity<Map<String, Object>> pricesStatus() {
+        return ResponseEntity.ok(stockPriceService.status());
     }
 
     // 이메일 추출 헬퍼
