@@ -2,8 +2,11 @@ package com.example.Stock.controller;
 
 import com.example.Stock.domain.Stock;
 import com.example.Stock.domain.StockPrice;
+import com.example.Stock.dto.CrossSignal;
+import com.example.Stock.dto.IndicatorPoint;
 import com.example.Stock.repository.UserRepository;
 import com.example.Stock.service.AiRecommendService;
+import com.example.Stock.service.IndicatorService;
 import com.example.Stock.service.StockPriceService;
 import com.example.Stock.service.StockService;
 import com.example.Stock.service.WatchListService;
@@ -31,6 +34,7 @@ public class StockController {
     private final UserRepository userRepository;
     private final WatchListService watchListService;
     private final StockPriceService stockPriceService;
+    private final IndicatorService indicatorService;
 
     // 전체 종목 조회
     @Operation(summary = "전체 종목 조회", description = "DB에 저장된 전체 종목 조회")
@@ -161,6 +165,40 @@ public class StockController {
     @GetMapping("/prices/status")
     public ResponseEntity<Map<String, Object>> pricesStatus() {
         return ResponseEntity.ok(stockPriceService.status());
+    }
+
+    // 기술적 지표
+    @Operation(summary = "기술적 지표 조회",
+            description = "누적 일봉으로 이동평균(5/20/60), RSI(14), 볼린저밴드(20,2σ)를 계산한다. "
+                    + "구간 시작일의 지표도 정확하도록 앞쪽 데이터를 추가로 읽어 계산한다.")
+    @GetMapping("/{symbol}/indicators")
+    public ResponseEntity<List<IndicatorPoint>> getIndicators(
+            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol,
+            @Parameter(description = "시작일 (yyyy-MM-dd)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "종료일 (yyyy-MM-dd)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(indicatorService.getIndicators(symbol, from, to));
+    }
+
+    // 이동평균 교차 신호
+    @Operation(summary = "골든/데드크로스 신호 조회",
+            description = "단기 이동평균이 장기 이동평균을 돌파한 지점을 찾는다.")
+    @GetMapping("/{symbol}/signals")
+    public ResponseEntity<List<CrossSignal>> getCrossSignals(
+            @Parameter(description = "종목코드") @PathVariable String symbol,
+            @Parameter(description = "단기 이동평균 기간") @RequestParam(defaultValue = "20") int shortPeriod,
+            @Parameter(description = "장기 이동평균 기간") @RequestParam(defaultValue = "60") int longPeriod,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(
+                indicatorService.getCrossSignals(symbol, shortPeriod, longPeriod, from, to));
+    }
+
+    // 잘못된 요청 파라미터는 400으로 응답한다 (기간 조합 오류 등)
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<String> handleIllegalArgument(IllegalArgumentException e) {
+        return ResponseEntity.badRequest().body(e.getMessage());
     }
 
     // 이메일 추출 헬퍼
