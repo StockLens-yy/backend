@@ -2,10 +2,12 @@ package com.example.Stock.controller;
 
 import com.example.Stock.domain.Stock;
 import com.example.Stock.domain.StockPrice;
+import com.example.Stock.dto.BacktestResult;
 import com.example.Stock.dto.CrossSignal;
 import com.example.Stock.dto.IndicatorPoint;
 import com.example.Stock.repository.UserRepository;
 import com.example.Stock.service.AiRecommendService;
+import com.example.Stock.service.BacktestService;
 import com.example.Stock.service.IndicatorService;
 import com.example.Stock.service.StockPriceService;
 import com.example.Stock.service.StockService;
@@ -35,6 +37,7 @@ public class StockController {
     private final WatchListService watchListService;
     private final StockPriceService stockPriceService;
     private final IndicatorService indicatorService;
+    private final BacktestService backtestService;
 
     // 전체 종목 조회
     @Operation(summary = "전체 종목 조회", description = "DB에 저장된 전체 종목 조회")
@@ -193,6 +196,32 @@ public class StockController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return ResponseEntity.ok(
                 indicatorService.getCrossSignals(symbol, shortPeriod, longPeriod, from, to));
+    }
+
+    // 백테스팅
+    @Operation(summary = "이동평균 교차 전략 백테스팅",
+            description = "골든크로스 매수 / 데드크로스 매도 전략을 과거 데이터로 시뮬레이션한다. "
+                    + "누적 수익률·최대낙폭(MDD)·승률과 단순 보유(Buy&Hold) 대비 성과를 함께 반환한다. "
+                    + "체결은 미래참조를 피하기 위해 신호 다음 거래일 종가로 처리한다.")
+    @GetMapping("/{symbol}/backtest")
+    public ResponseEntity<BacktestResult> backtest(
+            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol,
+            @Parameter(description = "단기 이동평균 기간") @RequestParam(defaultValue = "5") int shortPeriod,
+            @Parameter(description = "장기 이동평균 기간") @RequestParam(defaultValue = "20") int longPeriod,
+            @Parameter(description = "시작일 (yyyy-MM-dd)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @Parameter(description = "종료일 (yyyy-MM-dd)")
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @Parameter(description = "초기 자본") @RequestParam(required = false) Double initialCapital,
+            @Parameter(description = "매매 수수료율 (0.00015 = 0.015%)")
+            @RequestParam(required = false) Double feeRate,
+            @Parameter(description = "증권거래세율 (0.0018 = 0.18%)")
+            @RequestParam(required = false) Double taxRate) {
+        return ResponseEntity.ok(backtestService.run(
+                symbol, shortPeriod, longPeriod, from, to,
+                initialCapital == null ? BacktestService.DEFAULT_CAPITAL : initialCapital,
+                feeRate == null ? BacktestService.DEFAULT_FEE_RATE : feeRate,
+                taxRate == null ? BacktestService.DEFAULT_TAX_RATE : taxRate));
     }
 
     // 잘못된 요청 파라미터는 400으로 응답한다 (기간 조합 오류 등)
