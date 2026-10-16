@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Getter @Setter
 @NoArgsConstructor
@@ -25,4 +27,7 @@ public class Stock {
     private Double changePercent;
 
     private Long volume;
+
+    /** 시세를 마지막으로 갱신한 시각 */
+    private LocalDateTime updatedAt;
 }

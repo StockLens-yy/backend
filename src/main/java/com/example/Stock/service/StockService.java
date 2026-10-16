@@ -8,6 +8,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.ArrayList;
@@ -22,6 +23,7 @@ public class StockService {
     private final StockRepository stockRepository;
     private final RestTemplate restTemplate;
     private final KisTokenService kisTokenService;
+    private final LiveQuoteHub liveQuoteHub;
 
     @Value("${kis.api.appkey}")
     private String appKey;
@@ -146,6 +148,7 @@ public class StockService {
         stock.setChange(Double.parseDouble((String) output.get("prdy_vrss")));
         stock.setChangePercent(Double.parseDouble((String) output.get("prdy_ctrt")));
         stock.setVolume(Long.parseLong((String) output.get("acml_vol")));
+        stock.setUpdatedAt(LocalDateTime.now());
     }
 
     // 홈 목록 시세 갱신: 시가총액 순위(30건)를 한 번에 받고, 그 외 DB에 등록된 종목은 개별 조회한다
@@ -175,8 +178,20 @@ public class StockService {
         return result;
     }
 
+    // 홈 목록: DB 시세에 웹소켓으로 받은 더 최신 체결가를 덮어 반환한다
     public List<Stock> getAllStocks() {
-        return stockRepository.findAll();
+        List<Stock> stocks = stockRepository.findAll();
+        for (Stock stock : stocks) {
+            liveQuoteHub.get(stock.getSymbol()).ifPresent(q -> {
+                if (stock.getUpdatedAt() != null && stock.getUpdatedAt().isAfter(q.updatedAt())) return;
+                stock.setPrice(q.price());
+                stock.setChange(q.change());
+                stock.setChangePercent(q.changePercent());
+                stock.setVolume(q.volume());
+                stock.setUpdatedAt(q.updatedAt());
+            });
+        }
+        return stocks;
     }
     // 일봉 데이터 조회 (최근 30일)
     public List<Map<String, Object>> getDailyChart(String symbol) {
