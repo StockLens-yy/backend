@@ -123,50 +123,22 @@ public class StockService {
     }
     // 일봉 데이터 조회 (최근 30일)
     public List<Map<String, Object>> getDailyChart(String symbol) {
-        String token = kisTokenService.getAccessToken();
+        return getDailyChart(symbol, java.time.LocalDate.now().minusDays(30), java.time.LocalDate.now());
+    }
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("authorization", "Bearer " + token);
-        headers.set("appkey", appKey);
-        headers.set("appsecret", appSecret);
-        headers.set("tr_id", "FHKST03010100");
-        headers.set("custtype", "P");
-
-        HttpEntity<Void> request = new HttpEntity<>(headers);
-
-        // 일봉
-        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String past = java.time.LocalDate.now().minusDays(30).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-
-        String url = baseUrl + "/uapi/domestic-stock/v1/quotations/inquire-daily-price"
-                + "?fid_cond_mrkt_div_code=J"
-                + "&fid_input_iscd=" + symbol
-                + "&fid_period_div_code=D"
-                + "&fid_org_adj_prc=0"
-                + "&fid_input_date_1=" + past
-                + "&fid_input_date_2=" + today;
-
-        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
-        List<Map<String, Object>> output = (List<Map<String, Object>>) response.getBody().get("output2");
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        if (output != null) {
-            for (Map<String, Object> item : output) {
-                Map<String, Object> data = new HashMap<>();
-                data.put("date", item.get("stck_bsop_date"));
-                data.put("close", item.get("stck_clpr"));
-                data.put("open", item.get("stck_oprc"));
-                data.put("high", item.get("stck_hgpr"));
-                data.put("low", item.get("stck_lwpr"));
-                data.put("volume", item.get("acml_vol"));
-                result.add(data);
-            }
-        }
-        return result;
+    // 일봉 데이터 조회 (기간 지정) - 시계열 수집 배치에서 사용
+    public List<Map<String, Object>> getDailyChart(String symbol, java.time.LocalDate from, java.time.LocalDate to) {
+        return fetchCandles(symbol, "D", from, to);
     }
 
     // 주봉 데이터 조회
     public List<Map<String, Object>> getWeeklyChart(String symbol) {
+        return fetchCandles(symbol, "W", java.time.LocalDate.now().minusMonths(3), java.time.LocalDate.now());
+    }
+
+    // KIS 기간별 시세 조회 공통 로직 (D: 일봉, W: 주봉, M: 월봉)
+    private List<Map<String, Object>> fetchCandles(String symbol, String periodDivCode,
+                                                   java.time.LocalDate from, java.time.LocalDate to) {
         String token = kisTokenService.getAccessToken();
 
         HttpHeaders headers = new HttpHeaders();
@@ -177,17 +149,17 @@ public class StockService {
         headers.set("custtype", "P");
 
         HttpEntity<Void> request = new HttpEntity<>(headers);
-// 주봉
-        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String past = java.time.LocalDate.now().minusMonths(3).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        java.time.format.DateTimeFormatter fmt =
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd");
 
         String url = baseUrl + "/uapi/domestic-stock/v1/quotations/inquire-daily-price"
                 + "?fid_cond_mrkt_div_code=J"
                 + "&fid_input_iscd=" + symbol
-                + "&fid_period_div_code=W"
+                + "&fid_period_div_code=" + periodDivCode
                 + "&fid_org_adj_prc=0"
-                + "&fid_input_date_1=" + past
-                + "&fid_input_date_2=" + today;
+                + "&fid_input_date_1=" + from.format(fmt)
+                + "&fid_input_date_2=" + to.format(fmt);
 
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
         List<Map<String, Object>> output = (List<Map<String, Object>>) response.getBody().get("output2");
@@ -195,6 +167,7 @@ public class StockService {
         List<Map<String, Object>> result = new ArrayList<>();
         if (output != null) {
             for (Map<String, Object> item : output) {
+                if (item == null || item.get("stck_bsop_date") == null) continue;
                 Map<String, Object> data = new HashMap<>();
                 data.put("date", item.get("stck_bsop_date"));
                 data.put("close", item.get("stck_clpr"));
