@@ -32,8 +32,18 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/stocks/ai-recommend", "/api/stocks/watchlist/**").authenticated()
+                        .requestMatchers("/api/portfolio/**").authenticated()
                         .anyRequest().permitAll()
                 )
+                // /api/** 는 REST 이므로 로그인 폼으로 리다이렉트(302)하지 않고 401 을 준다
+                .exceptionHandling(ex -> ex.defaultAuthenticationEntryPointFor(
+                        (req, res, authEx) -> {
+                            res.setStatus(401);
+                            res.setContentType("application/json;charset=UTF-8");
+                            res.getWriter().write("{\"message\":\"로그인이 필요합니다.\"}");
+                        },
+                        request -> request.getRequestURI().startsWith("/api/")
+                ))
                 .formLogin(form -> form
                         .loginProcessingUrl("/api/auth/login")
                         .defaultSuccessUrl("/", true)
