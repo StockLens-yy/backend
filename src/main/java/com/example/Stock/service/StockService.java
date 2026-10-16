@@ -91,6 +91,15 @@ public class StockService {
         return stockRepository.save(stock);
     }
 
+    // 단일 종목 실시간 주가 조회 (저장하지 않음) - 검색한 종목 조회용
+    public Stock getQuote(String symbol, String name) {
+        Stock stock = new Stock();
+        stock.setSymbol(symbol);
+        stock.setName(name);
+        applyQuote(stock, inquirePrice(symbol));
+        return stock;
+    }
+
     // KIS 현재가 시세 API 호출. 초당 호출 한도(EGW00201)에 걸리면 잠시 대기 후 재시도한다
     private Map inquirePrice(String symbol) {
         for (int attempt = 1; ; attempt++) {

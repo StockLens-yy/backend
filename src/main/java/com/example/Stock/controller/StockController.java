@@ -1,6 +1,7 @@
 package com.example.Stock.controller;
 
 import com.example.Stock.domain.Stock;
+import com.example.Stock.domain.StockMaster;
 import com.example.Stock.domain.StockPrice;
 import com.example.Stock.dto.BacktestResult;
 import com.example.Stock.dto.CrossSignal;
@@ -9,6 +10,7 @@ import com.example.Stock.repository.UserRepository;
 import com.example.Stock.service.AiRecommendService;
 import com.example.Stock.service.BacktestService;
 import com.example.Stock.service.IndicatorService;
+import com.example.Stock.service.StockMasterService;
 import com.example.Stock.service.StockPriceService;
 import com.example.Stock.service.StockService;
 import com.example.Stock.service.WatchListService;
@@ -38,6 +40,7 @@ public class StockController {
     private final StockPriceService stockPriceService;
     private final IndicatorService indicatorService;
     private final BacktestService backtestService;
+    private final StockMasterService stockMasterService;
 
     // 전체 종목 조회
     @Operation(summary = "전체 종목 조회", description = "DB에 저장된 전체 종목 조회")
@@ -51,6 +54,33 @@ public class StockController {
     @PostMapping("/refresh")
     public ResponseEntity<List<Stock>> refresh() {
         return ResponseEntity.ok(stockService.getAllStockPrices());
+    }
+
+    // 전 종목 검색
+    @Operation(summary = "전 종목 검색", description = "코스피·코스닥 전 종목(주식·ETF)을 종목명 또는 종목코드로 검색. 시세는 포함하지 않는다")
+    @GetMapping("/search")
+    public ResponseEntity<List<StockMaster>> search(
+            @Parameter(description = "검색어 (예: 삼성, 005930)") @RequestParam String q) {
+        return ResponseEntity.ok(stockMasterService.search(q));
+    }
+
+    // 종목 마스터 수동 동기화
+    @Operation(summary = "종목 마스터 동기화", description = "KIS 종목 마스터 파일을 다시 받아 전 종목 목록을 갱신한다")
+    @PostMapping("/master/sync")
+    public ResponseEntity<String> syncMaster() {
+        return ResponseEntity.ok(stockMasterService.sync() + "개 종목 동기화");
+    }
+
+    // 단일 종목 실시간 시세 (저장하지 않음)
+    @Operation(summary = "단일 종목 실시간 시세", description = "검색한 종목의 현재가를 KIS API로 조회한다. 홈 화면 목록에는 저장하지 않는다")
+    @GetMapping("/{symbol}/quote")
+    public ResponseEntity<?> getQuote(
+            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String symbol) {
+        try {
+            return ResponseEntity.ok(stockService.getQuote(symbol, stockMasterService.findName(symbol)));
+        } catch (Exception e) {
+            return ResponseEntity.status(502).body("시세 조회 실패: " + e.getMessage());
+        }
     }
 
     // 단일 종목 조회
