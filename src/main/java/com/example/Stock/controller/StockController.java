@@ -10,6 +10,7 @@ import com.example.Stock.repository.UserRepository;
 import com.example.Stock.service.AiRecommendService;
 import com.example.Stock.service.BacktestService;
 import com.example.Stock.service.IndicatorService;
+import com.example.Stock.service.LiveQuoteHub;
 import com.example.Stock.service.StockMasterService;
 import com.example.Stock.service.StockPriceService;
 import com.example.Stock.service.StockService;
@@ -19,9 +20,11 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -41,6 +44,7 @@ public class StockController {
     private final IndicatorService indicatorService;
     private final BacktestService backtestService;
     private final StockMasterService stockMasterService;
+    private final LiveQuoteHub liveQuoteHub;
 
     // 전체 종목 조회
     @Operation(summary = "전체 종목 조회", description = "DB에 저장된 전체 종목 조회")
@@ -54,6 +58,13 @@ public class StockController {
     @PostMapping("/refresh")
     public ResponseEntity<List<Stock>> refresh() {
         return ResponseEntity.ok(stockService.getAllStockPrices());
+    }
+
+    // 실시간 체결가 스트림 (SSE)
+    @Operation(summary = "실시간 체결가 스트림", description = "장중 체결가를 0.2초 단위로 묶어 'quotes' 이벤트로 계속 보낸다")
+    @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter stream() {
+        return liveQuoteHub.subscribe();
     }
 
     // 전 종목 검색
