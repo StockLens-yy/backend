@@ -3,18 +3,17 @@ package com.example.Stock.service;
 import com.example.Stock.domain.Stock;
 import com.example.Stock.repository.StockRepository;
 import lombok.RequiredArgsConstructor;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -33,41 +32,84 @@ public class StockService {
     @Value("${kis.api.base-url}")
     private String baseUrl;
 
-    // 네이버 금융에서 시가총액 Top50 종목코드 크롤링
-    public List<String[]> crawlTop50() {
-        List<String[]> result = new ArrayList<>();
-        try {
-            for (int page = 1; page <= 5; page++) {
-                Document doc = Jsoup.connect(
-                                "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0&page=" + page
-                        )
-                        .userAgent("Mozilla/5.0")
-                        .get();
+    private static final long API_CALL_INTERVAL_MS = 500L; // KIS 초당 호출 한도 대비
+    private static final int MAX_RETRY = 3;
+    private static final long RETRY_BACKOFF_MS = 1000L;
+    private static final String RATE_LIMIT_CODE = "EGW00201";
 
-                Elements rows = doc.select("table.type_2 tbody tr");
-                for (Element row : rows) {
-                    Elements cols = row.select("td");
-                    if (cols.size() < 2) continue;
+    // KIS 시가총액 순위 조회 (코스피, API 한도상 최대 30건) - 현재가가 함께 내려와 바로 저장한다
+    public List<Stock> fetchMarketCapTop() {
+        String token = kisTokenService.getAccessToken();
 
-                    Element nameEl = row.selectFirst("td a.tltle");
-                    if (nameEl == null) continue;
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("authorization", "Bearer " + token);
+        headers.set("appkey", appKey);
+        headers.set("appsecret", appSecret);
+        headers.set("tr_id", "FHPST01740000");
+        headers.set("custtype", "P");
 
-                    String name = nameEl.text();
-                    String href = nameEl.attr("href"); // /item/main.naver?code=005930
-                    String code = href.replace("/item/main.naver?code=", "");
+        HttpEntity<Void> request = new HttpEntity<>(headers);
 
-                    result.add(new String[]{code, name});
-                    if (result.size() >= 50) return result;
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("크롤링 실패: " + e.getMessage());
+        String url = baseUrl + "/uapi/domestic-stock/v1/ranking/market-cap"
+                + "?fid_input_price_2=&fid_cond_mrkt_div_code=J&fid_cond_scr_div_code=20174"
+                + "&fid_div_cls_code=0&fid_input_iscd=0001&fid_trgt_cls_code=0"
+                + "&fid_trgt_exls_cls_code=0&fid_input_price_1=&fid_vol_cnt=";
+
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+        List<Map<String, Object>> output = (List<Map<String, Object>>) response.getBody().get("output");
+
+        List<Stock> result = new ArrayList<>();
+        if (output == null) return result;
+
+        for (Map<String, Object> item : output) {
+            String symbol = (String) item.get("mksc_shrn_iscd");
+            if (symbol == null || symbol.isBlank()) continue;
+
+            Stock stock = stockRepository.findBySymbol(symbol)
+                    .orElse(new Stock());
+
+            stock.setSymbol(symbol);
+            stock.setName((String) item.get("hts_kor_isnm"));
+            applyQuote(stock, item);
+
+            result.add(stockRepository.save(stock));
         }
         return result;
     }
 
-    // 단일 종목 실시간 주가 조회
+    // 단일 종목 실시간 주가 조회 후 DB(홈 화면 목록)에 저장
     public Stock getStockPrice(String symbol, String name) {
+        Map output = inquirePrice(symbol);
+
+        Stock stock = stockRepository.findBySymbol(symbol)
+                .orElse(new Stock());
+
+        stock.setSymbol(symbol);
+        stock.setName(name);
+        applyQuote(stock, output);
+
+        return stockRepository.save(stock);
+    }
+
+    // KIS 현재가 시세 API 호출. 초당 호출 한도(EGW00201)에 걸리면 잠시 대기 후 재시도한다
+    private Map inquirePrice(String symbol) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return requestPrice(symbol);
+            } catch (RestClientResponseException e) {
+                boolean rateLimited = e.getResponseBodyAsString().contains(RATE_LIMIT_CODE);
+                if (!rateLimited || attempt >= MAX_RETRY) throw e;
+                try {
+                    Thread.sleep(RETRY_BACKOFF_MS * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw e;
+                }
+            }
+        }
+    }
+
+    private Map requestPrice(String symbol) {
         String token = kisTokenService.getAccessToken();
 
         HttpHeaders headers = new HttpHeaders();
@@ -86,33 +128,39 @@ public class StockService {
                 url, HttpMethod.GET, request, Map.class
         );
 
-        Map output = (Map) response.getBody().get("output");
+        return (Map) response.getBody().get("output");
+    }
 
-        Stock stock = stockRepository.findBySymbol(symbol)
-                .orElse(new Stock());
-
-        stock.setSymbol(symbol);
-        stock.setName(name);
+    // KIS 응답의 시세 필드를 Stock에 반영 (현재가 API와 순위 API의 필드명이 같다)
+    private void applyQuote(Stock stock, Map output) {
         stock.setPrice(Double.parseDouble((String) output.get("stck_prpr")));
         stock.setChange(Double.parseDouble((String) output.get("prdy_vrss")));
         stock.setChangePercent(Double.parseDouble((String) output.get("prdy_ctrt")));
         stock.setVolume(Long.parseLong((String) output.get("acml_vol")));
-
-        return stockRepository.save(stock);
     }
 
-    // Top50 전체 조회
+    // 홈 목록 시세 갱신: 시가총액 순위(30건)를 한 번에 받고, 그 외 DB에 등록된 종목은 개별 조회한다
     public List<Stock> getAllStockPrices() {
-        List<String[]> top50 = crawlTop50();
         List<Stock> result = new ArrayList<>();
+        Set<String> done = new HashSet<>();
 
-        for (String[] item : top50) {
+        try {
+            for (Stock stock : fetchMarketCapTop()) {
+                result.add(stock);
+                done.add(stock.getSymbol());
+            }
+        } catch (Exception e) {
+            System.out.println("시가총액 순위 조회 실패, DB 종목으로 대체: " + e.getMessage());
+        }
+
+        for (Stock saved : stockRepository.findAll()) {
+            if (saved.getSymbol() == null || !done.add(saved.getSymbol())) continue;
             try {
-                result.add(getStockPrice(item[0], item[1]));
-                Thread.sleep(1000); // 1초
+                result.add(getStockPrice(saved.getSymbol(), saved.getName()));
+                Thread.sleep(API_CALL_INTERVAL_MS);
             } catch (Exception e) {
                 e.printStackTrace();
-                System.out.println("조회 실패: " + item[1] + " / 원인: " + e.getMessage());
+                System.out.println("조회 실패: " + saved.getName() + " / 원인: " + e.getMessage());
             }
         }
         return result;

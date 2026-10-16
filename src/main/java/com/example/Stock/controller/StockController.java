@@ -47,7 +47,7 @@ public class StockController {
     }
 
     // Top50 실시간 업데이트
-    @Operation(summary = "Top50 실시간 업데이트", description = "네이버 크롤링 + KIS API로 실시간 주가 조회")
+    @Operation(summary = "Top50 실시간 업데이트", description = "KIS 시가총액 순위 + 현재가 API로 실시간 주가 조회")
     @PostMapping("/refresh")
     public ResponseEntity<List<Stock>> refresh() {
         return ResponseEntity.ok(stockService.getAllStockPrices());
