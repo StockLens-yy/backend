@@ -1,0 +1,8 @@
+{
+  "summary": "AI 요약을 만들지 못해 계산된 지표만 정리했습니다.",
+  "price_trend": "현재가 {{currentPrice}}, 전일 대비 {{changeRate}}입니다. 5일 이동평균 {{ma5}}(괴리율 {{ma5GapRate}}), 20일 이동평균 {{ma20}}(괴리율 {{ma20GapRate}})입니다.",
+  "volume": "당일 누적 거래량 {{volume}}, 직전 20일 평균 {{avgVolume20}}, 20일 평균 대비 {{volumeRatio}}입니다.",
+  "technical": "RSI(14) {{rsi14}}({{rsiZone}}), 52주 범위 내 위치 {{position52w}}({{range52wZone}})입니다. (52주 최고가 {{high52w}}, 최저가 {{low52w}})",
+  "check_points": [],
+  "disclaimer": ""
+}

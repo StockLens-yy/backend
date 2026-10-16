@@ -7,7 +7,7 @@ import com.example.Stock.dto.BacktestResult;
 import com.example.Stock.dto.CrossSignal;
 import com.example.Stock.dto.IndicatorPoint;
 import com.example.Stock.repository.UserRepository;
-import com.example.Stock.service.AiRecommendService;
+import com.example.Stock.service.BriefingService;
 import com.example.Stock.service.BacktestService;
 import com.example.Stock.service.IndicatorService;
 import com.example.Stock.service.LiveQuoteHub;
@@ -24,6 +24,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
@@ -37,7 +38,7 @@ import java.util.Map;
 public class StockController {
 
     private final StockService stockService;
-    private final AiRecommendService aiRecommendService;
+    private final BriefingService briefingService;
     private final UserRepository userRepository;
     private final WatchListService watchListService;
     private final StockPriceService stockPriceService;
@@ -106,11 +107,19 @@ public class StockController {
                 .orElseThrow());
     }
 
-    // AI 추천
-    @Operation(summary = "AI 종목 추천", description = "Ollama AI가 Top50 데이터 분석 후 추천")
-    @GetMapping("/ai-recommend")
-    public ResponseEntity<String> aiRecommend() {
-        return ResponseEntity.ok(aiRecommendService.recommend());
+    // AI 현재 상황 정리 (브리핑)
+    @Operation(summary = "AI 현재 상황 정리",
+            description = "Java 가 계산한 지표(현재가·이동평균·거래량·52주 범위·RSI)를 AI 가 해석·요약한다. "
+                    + "AI 응답이 검증을 통과하지 못하면 계산값만으로 만든 기본 메시지를 반환한다(aiGenerated=false). "
+                    + "종목코드 + 기준일자로 캐싱한다")
+    @GetMapping("/{code}/briefing")
+    public ResponseEntity<?> briefing(
+            @Parameter(description = "종목코드 (예: 005930)") @PathVariable String code) {
+        try {
+            return ResponseEntity.ok(briefingService.brief(code));
+        } catch (RestClientException e) {
+            return ResponseEntity.status(502).body("시세 조회 실패: " + e.getMessage());
+        }
     }
 
     // 관심종목 추가

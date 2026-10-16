@@ -1,0 +1,15 @@
+# 팀 공용 기본 설정 (git 에 커밋됨).
+# 비밀값(DB 비밀번호, API 키)은 application.properties(git 제외)에 둔다.
+# 같은 키가 application.properties 에 있으면 그 값이 우선한다.
+
+ollama:
+  base-url: http://localhost:11434
+  model: gemma3:4b
+  timeout: 120s         # 응답 대기 시간. 첫 호출은 모델을 메모리에 올리느라 더 걸린다
+  connect-timeout: 3s
+  temperature: 0.2
+
+spring:
+  cache:
+    type: simple        # 메모리 캐시 (서버 재시작 시 초기화)
+    cache-names: briefing
