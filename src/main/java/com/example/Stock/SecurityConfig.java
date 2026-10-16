@@ -31,7 +31,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/stocks/ai-recommend", "/api/stocks/watchlist/**").authenticated()
+                        .requestMatchers("/api/stocks/*/briefing", "/api/stocks/watchlist/**").authenticated()
                         .requestMatchers("/api/portfolio/**").authenticated()
                         .anyRequest().permitAll()
                 )

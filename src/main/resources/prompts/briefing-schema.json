@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": { "type": "string" },
+    "price_trend": { "type": "string" },
+    "volume": { "type": "string" },
+    "technical": { "type": "string" },
+    "check_points": { "type": "array", "items": { "type": "string" } },
+    "disclaimer": { "type": "string" }
+  },
+  "required": ["summary", "price_trend", "volume", "technical", "check_points", "disclaimer"]
+}

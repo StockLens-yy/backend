@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -102,11 +103,21 @@ public class StockService {
         return stock;
     }
 
-    // KIS 현재가 시세 API 호출. 초당 호출 한도(EGW00201)에 걸리면 잠시 대기 후 재시도한다
+    // KIS 현재가 원본 응답 (52주 최고·최저가 등 Stock 엔티티에 없는 필드 포함) - 브리핑 지표 계산용
+    public Map<String, Object> getPriceDetail(String symbol) {
+        return inquirePrice(symbol);
+    }
+
+    // KIS 현재가 시세 API 호출
     private Map inquirePrice(String symbol) {
+        return withRateLimitRetry(() -> requestPrice(symbol));
+    }
+
+    // KIS 초당 호출 한도(EGW00201)에 걸리면 잠시 대기 후 재시도한다. 그 외 오류는 그대로 던진다
+    private <T> T withRateLimitRetry(Supplier<T> call) {
         for (int attempt = 1; ; attempt++) {
             try {
-                return requestPrice(symbol);
+                return call.get();
             } catch (RestClientResponseException e) {
                 boolean rateLimited = e.getResponseBodyAsString().contains(RATE_LIMIT_CODE);
                 if (!rateLimited || attempt >= MAX_RETRY) throw e;
@@ -211,6 +222,11 @@ public class StockService {
     // KIS 기간별 시세 조회 공통 로직 (D: 일봉, W: 주봉, M: 월봉)
     private List<Map<String, Object>> fetchCandles(String symbol, String periodDivCode,
                                                    java.time.LocalDate from, java.time.LocalDate to) {
+        return withRateLimitRetry(() -> requestCandles(symbol, periodDivCode, from, to));
+    }
+
+    private List<Map<String, Object>> requestCandles(String symbol, String periodDivCode,
+                                                     java.time.LocalDate from, java.time.LocalDate to) {
         String token = kisTokenService.getAccessToken();
 
         HttpHeaders headers = new HttpHeaders();
