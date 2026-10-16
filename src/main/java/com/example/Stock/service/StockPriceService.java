@@ -80,7 +80,7 @@ public class StockPriceService {
 
     /**
      * DB에 등록된 전체 종목의 최근 {@code days}일 일봉을 수집한다.
-     * 종목이 하나도 없으면 네이버 Top50 크롤링 결과를 사용한다.
+     * 종목이 하나도 없으면 KIS 시가총액 순위 결과를 사용한다.
      */
     public Map<String, Object> collectAll(int days) {
         long startedAt = System.currentTimeMillis();
@@ -92,7 +92,7 @@ public class StockPriceService {
             if (s.getSymbol() != null) symbols.add(s.getSymbol());
         }
         if (symbols.isEmpty()) {
-            for (String[] item : stockService.crawlTop50()) symbols.add(item[0]);
+            for (Stock s : stockService.fetchMarketCapTop()) symbols.add(s.getSymbol());
         }
 
         int savedRows = 0;
